@@ -305,13 +305,15 @@ public final class AetherEngine: ObservableObject {
     private var nativeVideoSession: HLSVideoEngine?
 
     /// Open a Dolby Vision direct-play source for the AVPlayer
-    /// path. The engine spins up a local HLS-fMP4 server fed by
-    /// FFmpeg-driven remuxing and returns a `localhost` playlist
-    /// URL the host hands to AVPlayer. Used only for DV streams on
-    /// DV-capable TVs, because Apple TV's HDMI HDR-mode handshake
-    /// to "Dolby Vision" is reachable solely through `AVPlayer`-
-    /// rooted playback (custom `AVSampleBufferDisplayLayer`
-    /// pipelines stay in HDR10).
+    /// path. Native MP4/M4V/MOV sources are returned directly so the
+    /// host can hand the original URL to AVPlayer without remuxing.
+    /// Other containers spin up a local HLS-fMP4 server fed by
+    /// FFmpeg-driven remuxing and return a `localhost` playlist URL
+    /// for the host to hand to AVPlayer. Used only for DV streams on
+    /// DV-capable TVs, because Apple TV's HDMI HDR-mode handshake to
+    /// "Dolby Vision" is reachable solely through `AVPlayer`-rooted
+    /// playback (custom `AVSampleBufferDisplayLayer` pipelines stay
+    /// in HDR10).
     ///
     /// Non-DV content stays on the regular `load(url:)` path; this
     /// method is purely additive and does not interfere with the
@@ -319,10 +321,20 @@ public final class AetherEngine: ObservableObject {
     /// `stopNativeVideoSession()` when the AVPlayer session ends.
     public func startNativeVideoSession(url: URL) throws -> URL {
         stopNativeVideoSession()
+        if Self.canHandOffDirectlyToAVPlayer(url) {
+            EngineLog.emit("[AetherEngine] native direct AVPlayer URL: \(url.absoluteString)")
+            return url
+        }
+
         let session = HLSVideoEngine(url: url)
         let playbackURL = try session.start()
         self.nativeVideoSession = session
         return playbackURL
+    }
+
+    private static func canHandOffDirectlyToAVPlayer(_ url: URL) -> Bool {
+        let pathExtension = url.pathExtension.lowercased()
+        return ["mp4", "m4v", "mov"].contains(pathExtension)
     }
 
     /// Tear down a native session started by
